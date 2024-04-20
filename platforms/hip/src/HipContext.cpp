@@ -40,7 +40,9 @@
 #include "HipNonbondedUtilities.h"
 #include "HipProgram.h"
 #include "HipFFTImplFFT3D.h"
+#ifdef OPENMM_HIP_WITH_HIPFFT
 #include "HipFFTImplHipFFT.h"
+#endif
 #include "HipFFTImplVkFFT.h"
 #include "openmm/common/ComputeArray.h"
 #include "openmm/common/ContextSelector.h"
@@ -709,7 +711,11 @@ ComputeEvent HipContext::createEvent() {
 
 HipFFTBase* HipContext::createFFT(int xsize, int ysize, int zsize, bool realToComplex, hipStream_t stream, HipArray& in, HipArray& out) {
     if (fftBackend == 1) {
+#ifdef OPENMM_HIP_WITH_HIPFFT
         return new HipFFTImplHipFFT(*this, xsize, ysize, zsize, realToComplex, stream, in, out);
+#else
+        throw OpenMMException("OpenMM HIP is not built with hipFFT support");
+#endif
     }
     else if (fftBackend == 2) {
         return new HipFFTImplVkFFT(*this, xsize, ysize, zsize, realToComplex, stream, in, out);
@@ -721,7 +727,9 @@ HipFFTBase* HipContext::createFFT(int xsize, int ysize, int zsize, bool realToCo
 
 int HipContext::findLegalFFTDimension(int minimum) {
     if (fftBackend == 1) {
+#ifdef OPENMM_HIP_WITH_HIPFFT
         return HipFFTImplHipFFT::findLegalDimension(minimum);
+#endif
     }
     else if (fftBackend == 2) {
         return HipFFTImplVkFFT::findLegalDimension(minimum);

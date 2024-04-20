@@ -35,6 +35,8 @@
  * This tests the hipFFT-based implementation of FFT.
  */
 
+#ifdef OPENMM_HIP_WITH_HIPFFT
+
 #include "openmm/internal/AssertionUtilities.h"
 #include "HipArray.h"
 #include "HipContext.h"
@@ -169,3 +171,11 @@ int main(int argc, char* argv[]) {
     cout << "Done" << endl;
     return 0;
 }
+
+#else // OPENMM_HIP_WITH_HIPFFT
+
+int main(int argc, char* argv[]) {
+    return 0;
+}
+
+#endif // OPENMM_HIP_WITH_HIPFFT

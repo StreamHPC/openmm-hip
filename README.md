@@ -5,15 +5,6 @@ AMD GPUs on [AMD ROCm™ open software platform](https://rocmdocs.amd.com).
 
 ## Installing with Conda
 
-This plugin requires hipFFT and rocFFT, install them from ROCm repositories:
-
-```sh
-apt install hipfft rocfft
-```
-
-If you see "libhipfft.so.0: cannot open shared object file: No such file or directory", run
-`ldconfig`.
-
 ```sh
 conda create -n openmm-env -c streamhpc -c conda-forge --strict-channel-priority openmm-hip
 conda activate openmm-env
@@ -140,6 +131,16 @@ please try different backends:
 * the built-in FFT implementation (`export OPENMM_FFT_BACKEND=0`).
 * the hipFFT/rocFFT-based implementation (`export OPENMM_FFT_BACKEND=1`);
 * the VkFFT-based implementation (`export OPENMM_FFT_BACKEND=2`);
+
+The hipFFT/rocFFT-based implementation requires hipFFT and rocFFT libraries, otherwise it will be
+disabled, install them from ROCm repositories before running cmake:
+
+```sh
+apt install hipfft rocfft
+```
+
+If you see "libhipfft.so.0: cannot open shared object file: No such file or directory", run
+`ldconfig`.
 
 ### The kernel compilation: amdclang++ and hipRTC
 

@@ -26,6 +26,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.      *
  * -------------------------------------------------------------------------- */
 
+#ifdef OPENMM_HIP_WITH_HIPFFT
+
 #include "HipFFTImplHipFFT.h"
 #include "HipContext.h"
 
@@ -121,3 +123,5 @@ int HipFFTImplHipFFT::findLegalDimension(int minimum) {
         minimum++;
     }
 }
+
+#endif // OPENMM_HIP_WITH_HIPFFT
