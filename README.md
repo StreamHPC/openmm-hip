@@ -63,7 +63,7 @@ The plugin requires source code of OpenMM, it can be downloaded as an archive
 [here](https://github.com/openmm/openmm/releases) or as a Git repository:
 
 ```sh
-git clone https://github.com/openmm/openmm.git -b 8.1.1
+git clone https://github.com/openmm/openmm.git -b master
 ```
 
 To build the plugin, follow these steps:
