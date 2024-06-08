@@ -180,7 +180,7 @@ HipContext::HipContext(const System& system, int deviceIndex, bool useBlockingSy
 
     if (gpuArchitecture.find("gfx908") == 0 ||
         gpuArchitecture.find("gfx90a") == 0 ||
-        gpuArchitecture.find("gfx940") == 0) {
+        gpuArchitecture.find("gfx94") == 0) {
         // MI100 and newer CDNA support 32 bit float atomic add
         this->supportsHardwareFloatGlobalAtomicAdd = true;
     }

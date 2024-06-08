@@ -232,8 +232,7 @@ void collectInteractions(unsigned int& interacts, double d, int) {
 
 #endif
 
-#if !defined(USE_DOUBLE_PRECISION) && \
-    (defined(__gfx908__) || defined(__gfx90a__) || defined(__gfx940__))
+#if !defined(USE_DOUBLE_PRECISION) && __has_builtin(__builtin_amdgcn_mfma_f32_4x4x1f32)
 
 #define USE_MFMA
 
