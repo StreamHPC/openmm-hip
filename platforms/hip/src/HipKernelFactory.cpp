@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2023 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2024 Stanford University and the Authors.      *
  * Portions copyright (C) 2020 Advanced Micro Devices, Inc. All Rights        *
  * Reserved.                                                                  *
  * Authors: Peter Eastman, Nicholas Curtis                                    *
@@ -123,8 +123,6 @@ KernelImpl* HipKernelFactory::createKernelImpl(std::string name, const Platform&
         return new CommonCalcGayBerneForceKernel(name, platform, cu);
     if (name == IntegrateVerletStepKernel::Name())
         return new CommonIntegrateVerletStepKernel(name, platform, cu);
-    if (name == IntegrateLangevinStepKernel::Name())
-        return new CommonIntegrateLangevinStepKernel(name, platform, cu);
     if (name == IntegrateLangevinMiddleStepKernel::Name())
         return new CommonIntegrateLangevinMiddleStepKernel(name, platform, cu);
     if (name == IntegrateBrownianStepKernel::Name())
