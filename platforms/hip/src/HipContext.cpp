@@ -29,7 +29,6 @@
 #ifdef WIN32
   #error "Windows unsupported for HIP platform"
 #endif
-#include <cmath>
 #include "HipContext.h"
 #include "HipArray.h"
 #include "HipBondedUtilities.h"
@@ -53,6 +52,7 @@
 #include "HipExpressionUtilities.h"
 #include "openmm/internal/ContextImpl.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -60,9 +60,10 @@
 #include <set>
 #include <sstream>
 #include <stack>
+#include <thread>
 #include <typeinfo>
 #include <sys/stat.h>
-#include <unistd.h>
+#include <hip/hiprtc.h>
 
 
 #define CHECK_RESULT(result) CHECK_RESULT2(result, errorMessage);
@@ -70,6 +71,13 @@
     if (result != hipSuccess) { \
         std::stringstream m; \
         m<<prefix<<": "<<getErrorString(result)<<" ("<<result<<")"<<" at "<<__FILE__<<":"<<__LINE__; \
+        throw OpenMMException(m.str());\
+    }
+
+#define HIPRTC_CHECK_RESULT(result, prefix) \
+    if (result != HIPRTC_SUCCESS) { \
+        stringstream m; \
+        m<<prefix<<": "<<hiprtcGetErrorString(result)<<" ("<<result<<")"<<" at "<<__FILE__<<":"<<__LINE__; \
         throw OpenMMException(m.str());\
     }
 
@@ -81,27 +89,10 @@ const int HipContext::TileSize = sizeof(tileflags)*8;
 bool HipContext::hasInitializedHip = false;
 
 
-HipContext::HipContext(const System& system, int deviceIndex, bool useBlockingSync, const string& precision, const string& compiler,
-        const string& tempDir, const std::string& hostCompiler, bool allowRuntimeCompiler, HipPlatform::PlatformData& platformData,
+HipContext::HipContext(const System& system, int deviceIndex, bool useBlockingSync, const string& precision, const string& tempDir, HipPlatform::PlatformData& platformData,
         HipContext* originalContext) : ComputeContext(system), currentStream(0), defaultStream(0), platformData(platformData), contextIsValid(false), hasAssignedPosqCharges(false),
-        hasCompilerKernel(false), isHipccAvailable(false), pinnedBuffer(NULL), integration(NULL), expression(NULL), bonded(NULL), nonbonded(NULL),
+        pinnedBuffer(NULL), integration(NULL), expression(NULL), bonded(NULL), nonbonded(NULL),
         useBlockingSync(useBlockingSync), fftBackend(0), supportsHardwareFloatGlobalAtomicAdd(false) {
-    // Determine what compiler to use.
-
-    this->compiler = "\""+compiler+"\"";
-    if (allowRuntimeCompiler && platformData.context != NULL) {
-        try {
-            compilerKernel = platformData.context->getPlatform().createKernel(HipCompilerKernel::Name(), *platformData.context);
-            hasCompilerKernel = true;
-        }
-        catch (...) {
-            // The runtime compiler plugin isn't available.
-        }
-    }
-    string testCompilerCommand = this->compiler+" --version > /dev/null 2> /dev/null";
-    int res = std::system(testCompilerCommand.c_str());
-    struct stat info;
-    isHipccAvailable = (res == 0 && stat(tempDir.c_str(), &info) == 0);
     if (!hasInitializedHip) {
         CHECK_RESULT2(hipInit(0), "Error initializing HIP");
         hasInitializedHip = true;
@@ -472,7 +463,7 @@ string HipContext::getTempFileName() const {
     stringstream tempFileName;
     tempFileName << tempDir;
     tempFileName << "openmmTempKernel" << this; // Include a pointer to this context as part of the filename to avoid collisions.
-    tempFileName << "_" << getpid();
+    tempFileName << "_" << std::this_thread::get_id();
     return tempFileName.str();
 }
 
@@ -501,8 +492,13 @@ hipModule_t HipContext::createModule(const string source) {
 
 hipModule_t HipContext::createModule(const string source, const map<string, string>& defines) {
     const char* saveTempsEnv = getenv("OPENMM_SAVE_TEMPS");
-    bool saveTemps = saveTempsEnv != nullptr;
-    string options = "-O3 -ffast-math -munsafe-fp-atomics -Wall";
+    bool saveTemps = saveTempsEnv != nullptr && string(saveTempsEnv) == "1";
+
+    int runtimeVersion;
+    CHECK_RESULT2(hipRuntimeGetVersion(&runtimeVersion), "Error getting HIP runtime version");
+
+    string options = "-O3 -ffast-math -munsafe-fp-atomics -Wall -Wno-hip-only";
+    options += " --offload-arch=" + gpuArchitecture;
     // HIP-TODO: Remove it when the compiler does a better job
     // Disable SLP vectorization as it may generate unoptimal packed math instructions on >=MI200
     // (gfx90a): more v_mov, higher register usage etc.
@@ -510,11 +506,14 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
     if (getMaxThreadBlockSize() < 1024) {
         options += " --gpu-max-threads-per-block=" + std::to_string(getMaxThreadBlockSize());
     }
+    if (runtimeVersion < 60140092) {
+        // Workaround for operator* defined for complex types (typedefs for float2, double2) in
+        // ROCm 6.0 headers. This issue has been fixed in 6.1. hipRTC includes amd_hip_complex.h
+        // by default, we fool the include guard into thinking the header is already included.
+        options += " -D HIP_INCLUDE_HIP_AMD_DETAIL_HIP_COMPLEX_H";
+    }
     stringstream src;
-    if (!options.empty())
-        src << "// Compilation Options: " << options << endl << endl;
-    int runtimeVersion;
-    CHECK_RESULT2(hipRuntimeGetVersion(&runtimeVersion), "Error getting HIP runtime version");
+    src << "// Compilation Options: " << options << endl << endl;
     src << "// HIP Runtime Version: " << runtimeVersion << endl << endl;
     for (auto& pair : compilationDefines) {
         // Query defines to avoid duplicate variables
@@ -528,14 +527,6 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
     if (!compilationDefines.empty())
         src << endl;
 
-    // hipRTC includes these headers automatically
-    if (!hasCompilerKernel) {
-        // include the main header for built-in variables (threadIdx etc.) and functions
-        src << "#include \"hip/hip_runtime.h\"\n";
-
-        // include the vector types
-        src << "#include \"hip/hip_vector_types.h\"\n";
-    }
     if (useDoublePrecision) {
         src << "typedef double real;\n";
         src << "typedef double2 real2;\n";
@@ -586,26 +577,64 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
 
     stringstream tempFileName;
     if (saveTemps) {
-        tempFileName << saveTempsEnv;
         const char* saveTempsPrefixEnv = getenv("OPENMM_SAVE_TEMPS_PREFIX");
         if (saveTempsPrefixEnv) {
             tempFileName << saveTempsPrefixEnv;
         }
         tempFileName << getHash(src.str());
+
+        options += " --save-temps";
+
+        string inputFile = (tempFileName.str()+".hip");
+        std::cout << "Source code: " << inputFile << std::endl;
+        std::cout << "Compile options: " << options << std::endl;
+        ofstream out(inputFile.c_str());
+        out << src.str();
+        out.close();
     }
     else {
         tempFileName << getTempFileName();
     }
-    string inputFile = (tempFileName.str()+".hip");
-    string outputFile = (tempFileName.str()+".code");
-    string logFile = (tempFileName.str()+".log");
-    int res = 0;
 
-    // If the runtime compiler plugin is available, use it.
+    // Split the command line options into an array of options.
 
-    if (hasCompilerKernel) {
-        vector<char> code = compilerKernel.getAs<HipCompilerKernel>().createModule(src.str(), options, *this);
-        // If possible, write the PTX out to a temporary file so we can cache it for later use.
+    stringstream flagsStream(options);
+    string flag;
+    vector<string> splitFlags;
+    while (flagsStream >> flag)
+        splitFlags.push_back(flag);
+    int numOptions = splitFlags.size();
+    vector<const char*> optionsVec(numOptions);
+    for (int i = 0; i < numOptions; i++)
+        optionsVec[i] = &splitFlags[i][0];
+
+    // Compile the program to CO.
+
+    hiprtcProgram program;
+    HIPRTC_CHECK_RESULT(hiprtcCreateProgram(&program, src.str().c_str(), tempFileName.str().c_str(), 0, NULL, NULL), "Error creating program");
+    try {
+        hiprtcResult result = hiprtcCompileProgram(program, optionsVec.size(), &optionsVec[0]);
+        if (result != HIPRTC_SUCCESS || saveTemps) {
+            size_t logSize;
+            hiprtcGetProgramLogSize(program, &logSize);
+            std::string log(logSize, '\0');
+            if (logSize > 0) {
+                hiprtcGetProgramLog(program, &log[0]);
+                if (saveTemps) {
+                    std::cout << "Log: " << log << std::endl;
+                }
+            }
+            if (result != HIPRTC_SUCCESS) {
+                throw OpenMMException("Error compiling program: "+log);
+            }
+        }
+        size_t codeSize;
+        hiprtcGetCodeSize(program, &codeSize);
+        vector<char> code(codeSize);
+        hiprtcGetCode(program, &code[0]);
+        hiprtcDestroyProgram(&program);
+
+        // If possible, write the CO out to a cache file for later use.
 
         try {
             ofstream out(cacheFile.c_str(), ios::out | ios::binary);
@@ -620,61 +649,9 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
         loadedModules.push_back(module);
         return module;
     }
-    else {
-        // Write out the source to a temporary file.
-
-        ofstream out(inputFile.c_str());
-        out << src.str();
-        out.close();
-        string command = compiler + " -x hip --offload-device-only --offload-arch=" + gpuArchitecture + " " + options + (saveTemps ? " -save-temps=obj" : "") +" -o \""+outputFile+"\" " + " \""+inputFile+"\" 2> \""+logFile+"\"";
-        res = std::system(command.c_str());
-        try {
-            if (res != 0) {
-                // Load the error log.
-
-                stringstream error;
-                error << "Error launching HIP compiler: " << res;
-                ifstream log(logFile.c_str());
-                if (log.is_open()) {
-                    string line;
-                    while (!log.eof()) {
-                        getline(log, line);
-                        error << '\n' << line;
-                    }
-                    log.close();
-                }
-                throw OpenMMException(error.str());
-            }
-
-            vector<char> code;
-            ifstream out(outputFile.c_str(), ios::in | ios::binary);
-            if (!out.is_open()) {
-                std::stringstream error;
-                error << "Error reading HIP module from `" << outputFile << "`";
-                throw OpenMMException(error.str());
-            }
-            code.insert(code.begin(), istreambuf_iterator<char>(out), istreambuf_iterator<char>());
-            out.close();
-
-            if (!saveTemps) {
-                remove(inputFile.c_str());
-                remove(logFile.c_str());
-            }
-            if (rename(outputFile.c_str(), cacheFile.c_str()) != 0 && !saveTemps)
-                remove(outputFile.c_str());
-
-            CHECK_RESULT2(hipModuleLoadDataEx(&module, &code[0], 0, NULL, NULL), "Error loading HIP module");
-            loadedModules.push_back(module);
-            return module;
-        }
-        catch (...) {
-            if (!saveTemps) {
-                remove(inputFile.c_str());
-                remove(outputFile.c_str());
-                remove(logFile.c_str());
-            }
-            throw;
-        }
+    catch (...) {
+        hiprtcDestroyProgram(&program);
+        throw;
     }
 }
 

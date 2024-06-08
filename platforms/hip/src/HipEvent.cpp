@@ -34,7 +34,7 @@ using namespace OpenMM;
 HipEvent::HipEvent(HipContext& context) : context(context), eventCreated(false) {
     hipError_t result = hipEventCreateWithFlags(&event, context.getEventFlags());
     if (result != hipSuccess)
-        throw OpenMMException("Error creating CUDA event:"+HipContext::getErrorString(result));
+        throw OpenMMException("Error creating HIP event:"+HipContext::getErrorString(result));
     eventCreated = true;
 }
 

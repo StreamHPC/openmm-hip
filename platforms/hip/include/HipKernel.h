@@ -37,7 +37,7 @@
 namespace OpenMM {
 
 /**
- * This is the CUDA implementation of the ComputeKernelImpl interface.
+ * This is the HIP implementation of the ComputeKernelImpl interface.
  */
 
 class HipKernel : public ComputeKernelImpl {

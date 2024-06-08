@@ -108,7 +108,7 @@ public:
         if (cu.getComputeForceCount() < 200) {
             // Record timing information for load balancing.  Since this takes time, only do it at the start of the simulation.
 
-            CHECK_RESULT(hipStreamSynchronize(cu.getCurrentStream()), "Error synchronizing CUDA context");
+            CHECK_RESULT(hipStreamSynchronize(cu.getCurrentStream()), "Error synchronizing HIP context");
             completionTime = getTime();
         }
         if (includeForce) {

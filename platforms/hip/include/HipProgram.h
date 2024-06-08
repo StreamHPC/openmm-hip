@@ -35,7 +35,7 @@
 namespace OpenMM {
 
 /**
- * This is the CUDA implementation of the ComputeProgramImpl interface.
+ * This is the HIP implementation of the ComputeProgramImpl interface.
  */
 
 class HipProgram : public ComputeProgramImpl {

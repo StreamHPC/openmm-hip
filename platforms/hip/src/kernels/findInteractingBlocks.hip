@@ -1,5 +1,3 @@
-#include <hip/hip_fp16.h>
-
 #define BUFFER_SIZE 256
 
 #if defined(AMD_RDNA)

@@ -42,7 +42,7 @@ namespace OpenMM {
 class HipContext;
 
 /**
- * This class encapsulates a block of CUDA device memory.  It provides a simplified API
+ * This class encapsulates a block of HIP device memory.  It provides a simplified API
  * for working with it and for copying data to and from device memory.
  */
 

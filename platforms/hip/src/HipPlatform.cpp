@@ -128,27 +128,12 @@ HipPlatform::HipPlatform() {
     setPropertyDefaultValue(HipUseCpuPme(), "false");
     setPropertyDefaultValue(HipDisablePmeStream(), "false");
     setPropertyDefaultValue(HipDeterministicForces(), "false");
-    string hipcc;
-    char* compiler = getenv("OPENMM_HIP_COMPILER");
-    char* rocmPath = getenv("ROCM_PATH");
-    if (compiler != NULL) {
-        hipcc = compiler;
-    }
-    else if (rocmPath != NULL) {
-        hipcc = string(rocmPath) + "/bin/amdclang++";
-    }
-    else {
-        hipcc = "/opt/rocm/bin/amdclang++";
-    }
-    setPropertyDefaultValue(HipCompiler(), hipcc);
-    char* useHipRtcEnv = getenv("OPENMM_USE_HIPRTC");
-    bool allowRuntimeCompiler = (useHipRtcEnv != NULL && string(useHipRtcEnv) == "1");
-    setPropertyDefaultValue(HipAllowRuntimeCompiler(), allowRuntimeCompiler ? "true" : "false");
+    setPropertyDefaultValue(HipCompiler(), "");
+    setPropertyDefaultValue(HipHostCompiler(), "");
+    setPropertyDefaultValue(HipAllowRuntimeCompiler(), "");
     char* tmpdir = getenv("TMPDIR");
     string tmp = (tmpdir == NULL ? string(P_tmpdir) : string(tmpdir));
     setPropertyDefaultValue(HipTempDirectory(), tmp);
-    char* hostCompiler = getenv("HIP_HOST_COMPILER");
-    setPropertyDefaultValue(HipHostCompiler(), (hostCompiler == NULL ? "" : string(hostCompiler)));
 }
 
 double HipPlatform::getSpeed() const {
@@ -183,14 +168,8 @@ void HipPlatform::contextCreated(ContextImpl& context, const map<string, string>
             getPropertyDefaultValue(HipPrecision()) : properties.find(HipPrecision())->second);
     string cpuPmePropValue = (properties.find(HipUseCpuPme()) == properties.end() ?
             getPropertyDefaultValue(HipUseCpuPme()) : properties.find(HipUseCpuPme())->second);
-    const string& compilerPropValue = (properties.find(HipCompiler()) == properties.end() ?
-            getPropertyDefaultValue(HipCompiler()) : properties.find(HipCompiler())->second);
-    const string& allowRuntimeCompilerValue = (properties.find(HipAllowRuntimeCompiler()) == properties.end() ?
-            getPropertyDefaultValue(HipAllowRuntimeCompiler()) : properties.find(HipAllowRuntimeCompiler())->second);
     const string& tempPropValue = (properties.find(HipTempDirectory()) == properties.end() ?
             getPropertyDefaultValue(HipTempDirectory()) : properties.find(HipTempDirectory())->second);
-    const string& hostCompilerPropValue = (properties.find(HipHostCompiler()) == properties.end() ?
-            getPropertyDefaultValue(HipHostCompiler()) : properties.find(HipHostCompiler())->second);
     string pmeStreamPropValue = (properties.find(HipDisablePmeStream()) == properties.end() ?
             getPropertyDefaultValue(HipDisablePmeStream()) : properties.find(HipDisablePmeStream())->second);
     string deterministicForcesValue = (properties.find(HipDeterministicForces()) == properties.end() ?
@@ -208,9 +187,8 @@ void HipPlatform::contextCreated(ContextImpl& context, const map<string, string>
     char* threadsEnv = getenv("OPENMM_CPU_THREADS");
     if (threadsEnv != NULL)
         stringstream(threadsEnv) >> threads;
-    bool allowRuntimeCompiler = allowRuntimeCompilerValue == "true";
-    context.setPlatformData(new PlatformData(&context, context.getSystem(), devicePropValue, blockingPropValue, precisionPropValue, cpuPmePropValue, compilerPropValue, tempPropValue,
-            hostCompilerPropValue, pmeStreamPropValue, deterministicForcesValue, threads, allowRuntimeCompiler, NULL));
+    context.setPlatformData(new PlatformData(&context, context.getSystem(), devicePropValue, blockingPropValue, precisionPropValue, cpuPmePropValue, tempPropValue,
+            pmeStreamPropValue, deterministicForcesValue, threads, NULL));
 }
 
 void HipPlatform::linkedContextCreated(ContextImpl& context, ContextImpl& originalContext) const {
@@ -219,15 +197,12 @@ void HipPlatform::linkedContextCreated(ContextImpl& context, ContextImpl& origin
     string blockingPropValue = platform.getPropertyValue(originalContext.getOwner(), HipUseBlockingSync());
     string precisionPropValue = platform.getPropertyValue(originalContext.getOwner(), HipPrecision());
     string cpuPmePropValue = platform.getPropertyValue(originalContext.getOwner(), HipUseCpuPme());
-    string compilerPropValue = platform.getPropertyValue(originalContext.getOwner(), HipCompiler());
     string tempPropValue = platform.getPropertyValue(originalContext.getOwner(), HipTempDirectory());
-    string hostCompilerPropValue = platform.getPropertyValue(originalContext.getOwner(), HipHostCompiler());
     string pmeStreamPropValue = platform.getPropertyValue(originalContext.getOwner(), HipDisablePmeStream());
     string deterministicForcesValue = platform.getPropertyValue(originalContext.getOwner(), HipDeterministicForces());
     int threads = reinterpret_cast<PlatformData*>(originalContext.getPlatformData())->threads.getNumThreads();
-    bool allowRuntimeCompiler = reinterpret_cast<PlatformData*>(originalContext.getPlatformData())->allowRuntimeCompiler;
-    context.setPlatformData(new PlatformData(&context, context.getSystem(), devicePropValue, blockingPropValue, precisionPropValue, cpuPmePropValue, compilerPropValue, tempPropValue,
-            hostCompilerPropValue, pmeStreamPropValue, deterministicForcesValue, threads, allowRuntimeCompiler, &originalContext));
+    context.setPlatformData(new PlatformData(&context, context.getSystem(), devicePropValue, blockingPropValue, precisionPropValue, cpuPmePropValue, tempPropValue,
+            pmeStreamPropValue, deterministicForcesValue, threads, &originalContext));
 }
 
 void HipPlatform::contextDestroyed(ContextImpl& context) const {
@@ -236,10 +211,10 @@ void HipPlatform::contextDestroyed(ContextImpl& context) const {
 }
 
 HipPlatform::PlatformData::PlatformData(ContextImpl* context, const System& system, const string& deviceIndexProperty, const string& blockingProperty, const string& precisionProperty,
-            const string& cpuPmeProperty, const string& compilerProperty, const string& tempProperty, const string& hostCompilerProperty, const string& pmeStreamProperty,
-            const string& deterministicForcesProperty, int numThreads, bool allowRuntimeCompiler, ContextImpl* originalContext) :
+            const string& cpuPmeProperty, const string& tempProperty, const string& pmeStreamProperty,
+            const string& deterministicForcesProperty, int numThreads, ContextImpl* originalContext) :
                 context(context), removeCM(false), stepCount(0), computeForceCount(0), time(0.0), hasInitializedContexts(false),
-                threads(numThreads), allowRuntimeCompiler(allowRuntimeCompiler) {
+                threads(numThreads) {
     bool blocking = (blockingProperty == "true");
     vector<string> devices;
     size_t searchPos = 0, nextPos;
@@ -256,11 +231,11 @@ HipPlatform::PlatformData::PlatformData(ContextImpl* context, const System& syst
             if (devices[i].length() > 0) {
                 int deviceIndex;
                 stringstream(devices[i]) >> deviceIndex;
-                contexts.push_back(new HipContext(system, deviceIndex, blocking, precisionProperty, compilerProperty, tempProperty, hostCompilerProperty, allowRuntimeCompiler, *this, (originalData == NULL ? NULL : originalData->contexts[i])));
+                contexts.push_back(new HipContext(system, deviceIndex, blocking, precisionProperty, tempProperty, *this, (originalData == NULL ? NULL : originalData->contexts[i])));
             }
         }
         if (contexts.size() == 0)
-            contexts.push_back(new HipContext(system, -1, blocking, precisionProperty, compilerProperty, tempProperty, hostCompilerProperty, allowRuntimeCompiler, *this, (originalData == NULL ? NULL : originalData->contexts[0])));
+            contexts.push_back(new HipContext(system, -1, blocking, precisionProperty, tempProperty, *this, (originalData == NULL ? NULL : originalData->contexts[0])));
     }
     catch (...) {
         // If an exception was thrown, do our best to clean up memory.
@@ -289,10 +264,10 @@ HipPlatform::PlatformData::PlatformData(ContextImpl* context, const System& syst
     propertyValues[HipPlatform::HipUseBlockingSync()] = blocking ? "true" : "false";
     propertyValues[HipPlatform::HipPrecision()] = precisionProperty;
     propertyValues[HipPlatform::HipUseCpuPme()] = useCpuPme ? "true" : "false";
-    propertyValues[HipPlatform::HipCompiler()] = compilerProperty;
-    propertyValues[HipPlatform::HipAllowRuntimeCompiler()] = allowRuntimeCompiler ? "true" : "false";
+    propertyValues[HipPlatform::HipCompiler()] = "";
+    propertyValues[HipPlatform::HipAllowRuntimeCompiler()] = "";
     propertyValues[HipPlatform::HipTempDirectory()] = tempProperty;
-    propertyValues[HipPlatform::HipHostCompiler()] = hostCompilerProperty;
+    propertyValues[HipPlatform::HipHostCompiler()] = "";
     propertyValues[HipPlatform::HipDisablePmeStream()] = disablePmeStream ? "true" : "false";
     propertyValues[HipPlatform::HipDeterministicForces()] = deterministicForces ? "true" : "false";
     contextEnergy.resize(contexts.size());

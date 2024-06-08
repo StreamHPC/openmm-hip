@@ -142,26 +142,6 @@ apt install hipfft rocfft
 If you see "libhipfft.so.0: cannot open shared object file: No such file or directory", run
 `ldconfig`.
 
-### The kernel compilation: amdclang++ and hipRTC
-
-By default, the HIP Platform builds kernels with the amdclang++ compiler. To run the compiler,
-paths in the following order are used:
-
-* `properties['HipCompiler']`, if it is passed to Context constructor;
-* `OPENMM_HIP_COMPILER` environment variable, if it is set;
-* `${ROCM_PATH}/bin/amdclang++`, if `ROCM_PATH` environment variable is set;
-* `/opt/rocm/bin/amdclang++` otherwise.
-
-There is an alternative way to compile kernels: hipRTC, it is implemented by
-`plugins/hipcompiler`.  To enable this way:
-
-* set `properties['HipAllowRuntimeCompiler'] = 'true'`;
-* set `OPENMM_USE_HIPRTC` environment variable to 1 (`export OPENMM_USE_HIPRTC=1`).
-
-**Warning:** hipRTC from ROCm 6.0.0 has issues with ambiguous operators for vector and complex
-types. It seems that they have been fixed in ROCm/clr's `develop` branch and likely OpenMM+hipRTC
-will be usable with the next ROCm release.
-
 ## License
 
 The HIP Platform uses OpenMM API under the terms of the MIT License.  A copy of this license may
