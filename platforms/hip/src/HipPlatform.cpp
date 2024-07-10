@@ -136,7 +136,10 @@ HipPlatform::HipPlatform() {
 }
 
 double HipPlatform::getSpeed() const {
-    return 100;
+    // Reduce the speed of the HIP platform if there are no HIP devices in the system,
+    // so the OpenCL plaform can be selected as default
+    int numDevices;
+    return hipGetDeviceCount(&numDevices) != hipErrorNoDevice ? 100 : 40;
 }
 
 bool HipPlatform::supportsDoublePrecision() const {
