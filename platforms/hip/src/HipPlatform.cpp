@@ -40,7 +40,7 @@
 #include <sstream>
 #include <cstdio>
 #ifdef _MSC_VER
-    #error "Windows unsupported for HIP platform"
+    #include <Windows.h>
 #endif
 using namespace OpenMM;
 using namespace std;
@@ -130,9 +130,13 @@ HipPlatform::HipPlatform() {
     setPropertyDefaultValue(HipCompiler(), "");
     setPropertyDefaultValue(HipHostCompiler(), "");
     setPropertyDefaultValue(HipAllowRuntimeCompiler(), "");
+#ifdef _MSC_VER
+    setPropertyDefaultValue(HipTempDirectory(), string(getenv("TEMP")));
+#else
     char* tmpdir = getenv("TMPDIR");
     string tmp = (tmpdir == NULL ? string(P_tmpdir) : string(tmpdir));
     setPropertyDefaultValue(HipTempDirectory(), tmp);
+#endif
 }
 
 double HipPlatform::getSpeed() const {

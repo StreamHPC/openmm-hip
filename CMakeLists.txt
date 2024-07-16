@@ -23,7 +23,11 @@ INCLUDE_DIRECTORIES(${OPENMM_DIR}/include)
 INCLUDE_DIRECTORIES(${OPENMM_DIR}/include/openmm/reference)
 LINK_DIRECTORIES("${OPENMM_DIR}/lib" "${OPENMM_DIR}/lib/plugins")
 
-SET(PTHREADS_LIB pthread)
+IF(NOT WIN32)
+    SET(PTHREADS_LIB pthread)
+    # in linux, even in static builds we link against the dynamic object (since its tied to libc versions)
+    SET(PTHREADS_LIB_STATIC pthread)
+ENDIF(NOT WIN32)
 
 # Specify the C++ version we are building for.
 SET(CMAKE_CXX_STANDARD 11)
@@ -80,6 +84,9 @@ ENDIF(NOT EXECUTABLE_OUTPUT_PATH)
 
 # Include OpenMM utiliity libraries
 SET(OPENMM_LIB_SUBDIRS libraries/jama libraries/quern libraries/hilbert libraries/csha1 libraries/lbfgs libraries/pocketfft)
+IF(WIN32)
+    SET(OPENMM_LIB_SUBDIRS ${OPENMM_LIB_SUBDIRS} libraries/pthreads)
+ENDIF(WIN32)
 FOREACH(subdir ${OPENMM_LIB_SUBDIRS})
     INCLUDE_DIRECTORIES(BEFORE ${OPENMM_SOURCE_DIR}/${subdir}/include)
 ENDFOREACH(subdir)

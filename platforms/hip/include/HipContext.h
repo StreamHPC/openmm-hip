@@ -44,7 +44,6 @@
 #include <utility>
 #define __CL_ENABLE_EXCEPTIONS
 #ifdef _MSC_VER
-    #error "Windows unsupported for HIP platform"
     // Prevent Windows from defining macros that interfere with other code.
     #define NOMINMAX
 #endif
@@ -604,6 +603,10 @@ public:
      * Get the flags that should be used when creating hipEvent_t objects.
      */
     unsigned int getEventFlags();
+    /**
+     * Get the flags that should be used when allocating pinned host memory.
+     */
+    unsigned int getHostMallocFlags();
 private:
     /**
      * Compute a sorted list of device indices in decreasing order of desirability

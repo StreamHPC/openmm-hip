@@ -27,7 +27,7 @@
  * -------------------------------------------------------------------------- */
 
 #ifdef WIN32
-  #error "Windows unsupported for HIP platform"
+  #define _USE_MATH_DEFINES // Needed to get M_PI
 #endif
 #include "HipContext.h"
 #include "HipArray.h"
@@ -113,8 +113,13 @@ HipContext::HipContext(const System& system, int deviceIndex, bool useBlockingSy
         throw OpenMMException("Illegal value for Precision: "+precision);
     char* cacheVariable = getenv("OPENMM_CACHE_DIR");
     cacheDir = (cacheVariable == NULL ? tempDir : string(cacheVariable));
+#ifdef WIN32
+    this->tempDir = tempDir+"\\";
+    cacheDir = cacheDir+"\\";
+#else
     this->tempDir = tempDir+"/";
     cacheDir = cacheDir+"/";
+#endif
     contextIndex = platformData.contexts.size();
     string errorMessage = "Error initializing Context";
     if (originalContext == NULL) {
@@ -388,19 +393,19 @@ void HipContext::initialize() {
         energyBuffer.initialize<double>(*this, numEnergyBuffers, "energyBuffer");
         energySum.initialize<double>(*this, multiprocessors, "energySum");
         int pinnedBufferSize = max(paddedNumAtoms*4, numEnergyBuffers);
-        CHECK_RESULT(hipHostMalloc(&pinnedBuffer, pinnedBufferSize*sizeof(double), hipHostMallocNumaUser));
+        CHECK_RESULT(hipHostMalloc(&pinnedBuffer, pinnedBufferSize*sizeof(double), getHostMallocFlags()));
     }
     else if (useMixedPrecision) {
         energyBuffer.initialize<double>(*this, numEnergyBuffers, "energyBuffer");
         energySum.initialize<double>(*this, multiprocessors, "energySum");
         int pinnedBufferSize = max(paddedNumAtoms*4, numEnergyBuffers);
-        CHECK_RESULT(hipHostMalloc(&pinnedBuffer, pinnedBufferSize*sizeof(double), hipHostMallocNumaUser));
+        CHECK_RESULT(hipHostMalloc(&pinnedBuffer, pinnedBufferSize*sizeof(double), getHostMallocFlags()));
     }
     else {
         energyBuffer.initialize<float>(*this, numEnergyBuffers, "energyBuffer");
         energySum.initialize<float>(*this, multiprocessors, "energySum");
         int pinnedBufferSize = max(paddedNumAtoms*6, numEnergyBuffers);
-        CHECK_RESULT(hipHostMalloc(&pinnedBuffer, pinnedBufferSize*sizeof(float), hipHostMallocNumaUser));
+        CHECK_RESULT(hipHostMalloc(&pinnedBuffer, pinnedBufferSize*sizeof(float), getHostMallocFlags()));
     }
     for (int i = 0; i < numAtoms; i++) {
         double mass = system.getParticleMass(i);
@@ -575,8 +580,8 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
 
     // Select names for the various temporary files.
 
-    stringstream tempFileName;
     if (saveTemps) {
+        stringstream tempFileName;
         const char* saveTempsPrefixEnv = getenv("OPENMM_SAVE_TEMPS_PREFIX");
         if (saveTempsPrefixEnv) {
             tempFileName << saveTempsPrefixEnv;
@@ -591,9 +596,6 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
         ofstream out(inputFile.c_str());
         out << src.str();
         out.close();
-    }
-    else {
-        tempFileName << getTempFileName();
     }
 
     // Split the command line options into an array of options.
@@ -611,7 +613,7 @@ hipModule_t HipContext::createModule(const string source, const map<string, stri
     // Compile the program to CO.
 
     hiprtcProgram program;
-    HIPRTC_CHECK_RESULT(hiprtcCreateProgram(&program, src.str().c_str(), tempFileName.str().c_str(), 0, NULL, NULL), "Error creating program");
+    HIPRTC_CHECK_RESULT(hiprtcCreateProgram(&program, src.str().c_str(), NULL, 0, NULL, NULL), "Error creating program");
     try {
         hiprtcResult result = hiprtcCompileProgram(program, optionsVec.size(), &optionsVec[0]);
         if (result != HIPRTC_SUCCESS || saveTemps) {
@@ -925,4 +927,12 @@ vector<int> HipContext::getDevicePrecedence() {
 unsigned int HipContext::getEventFlags() {
     unsigned int flags = hipEventDisableTiming;
     return flags;
+}
+
+unsigned int HipContext::getHostMallocFlags() {
+#ifdef WIN32
+    return hipHostMallocDefault;
+#else
+    return hipHostMallocNumaUser;
+#endif
 }
